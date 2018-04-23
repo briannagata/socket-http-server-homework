@@ -1,6 +1,11 @@
 import socket
 import sys
 import os
+import mimetypes
+
+
+workd = '/'.join([os.getcwd(), 'webroot'])
+
 
 def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
     """
@@ -51,7 +56,11 @@ def response_not_found():
     # You can re-use most of the code from the 405 Method Not
     # Allowed response.
 
-    pass
+    return b"\r\n".join([
+                b"HTTP/1.1 404 Page Not Found",
+                b"",
+                b"You can't do that on this server!",
+            ])
     
 
 def resolve_uri(uri):
@@ -88,11 +97,17 @@ def resolve_uri(uri):
 
     # Hint: When opening a file, use open(filename, "rb") to open and read the
     # file as a stream of bytes.
-
-    content = b"not implemented"
-    mime_type = b"not implemented"
-
-    return content, mime_type
+    if uri == '/':
+        content = '\n'.join([x for x in os.listdir(workd)]).encode()
+        mime_type = 'text/plain'
+    else:
+        try:
+            with open(''.join([workd, uri]), 'rb') as f:
+                content = f.read()
+        except FileNotFoundError:
+            raise NameError
+        mime_type = mimetypes.guess_type(uri)[0]
+    return content, mime_type.encode()
 
 
 def server(log_buffer=sys.stderr):
@@ -114,8 +129,8 @@ def server(log_buffer=sys.stderr):
                     data = conn.recv(1024)
                     request += data.decode('utf8')
 
-                    #if len(data) < 1024:
-                    #    break
+                    if len(data) < 1024:
+                        break
                     if b'\r\n\r\n' in data:
                         break
 
@@ -128,9 +143,12 @@ def server(log_buffer=sys.stderr):
                     # specified by uri can't be found. If it does raise a
                     # NameError, then let response get response_not_found()
                     # instead of response_ok()
-                    body, mimetype = resolve_uri(uri)
-                    response = response_ok(body=body, mimetype=mimetype)
-
+                    try:
+                        body, mimetype = resolve_uri(uri)
+                    except NameError:
+                        response = response_not_found()
+                    else:
+                        response = response_ok(body=body, mimetype=mimetype)
                 conn.sendall(response)
             finally:
                 conn.close()
